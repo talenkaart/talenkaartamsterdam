@@ -31,6 +31,29 @@ export type Observation = {
     homeLanguage: boolean;
 };
 
+export type Respondent = {
+    respondentId: number;
+    locationName: string;
+    stadsdeel: string;
+    postcode: string;
+    languages: RespondentLanguage[];
+}
+
+export type RespondentLanguage = {
+    code: string;
+    nameNL: string;
+    nameEN: string;
+    proficient: boolean;
+    basic: boolean;
+    homeLanguage: boolean;
+}
+
+export async function loadData(locale: "nl" | "en" = "nl") {
+    const res = await fetch("./talenkaart_data.xlsx");
+    const buffer = await res.arrayBuffer();
+    const workbook = XLSX.read(buffer);
+}
+
 function makeDisplayName(code: string, locale: string) {
     if (!code) return "(!)";
 

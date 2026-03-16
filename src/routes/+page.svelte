@@ -8,7 +8,7 @@
   import "maplibre-gl/dist/maplibre-gl.css";
 
   import LanguageToggle from "$lib/LanguageToggle.svelte";
-  import { ModeWatcher } from "mode-watcher";
+  import { ModeWatcher, mode } from "mode-watcher";
   import TaalOverzicht from "./TaalOverzicht.svelte";
 
   let mapContainer: HTMLDivElement | undefined = $state();
@@ -16,11 +16,18 @@
   let markers: maplibregl.Marker[] = [];
   let schoolLabelMarker: maplibregl.Marker | undefined;
 
+  // import {
+  //   loadObservations,
+  //   loadSchoolData,
+  //   type Observation,
+  // } from "$lib/data/loadObservations";
+
   import {
-    loadObservations,
-    loadSchoolData,
-    type Observation,
-  } from "$lib/data/loadObservations";
+    loadData,
+    type Respondent,
+    type RespondentLanguage,
+    type Locatie,
+  } from "$lib/data/loadRespondents";
 
   type Stadsdeel = {
     id: number;
@@ -28,18 +35,16 @@
     centroid: [number, number];
   };
 
-  type Locatie = {
-    naam: string;
-    coordinaten: [number, number];
-    type: "school" | "bibliotheek" | "cultureel";
-    stadsdeel: string;
-  };
-
   let locale = $state("nl");
 
   let stadsdelen: Stadsdeel[] = $state([]);
   let locaties: Locatie[] = $state([]);
-  let observaties = $state<Observation[]>([]);
+  let respondents = $state<Respondent[]>([]);
+
+  let languageFilters = $state({
+    homeLanguage: false,
+    proficient: false,
+  });
 
   let hoveredStadsdeelId = $state<number | null>(null);
   let selectedStadsdeelId = $state<number | null>(null);
@@ -49,6 +54,10 @@
 
   let showLocaties = $state(true);
   let showLabels = $state(true);
+
+  let showStadsdelen = $state(true);
+  let showScholen = $state(true);
+  let showBibliotheken = $state(true);
 
   let locationMarkers = $state<maplibregl.Marker[]>([]);
   let stadsdeelMarkers = $state<maplibregl.Marker[]>([]);
@@ -102,20 +111,45 @@
   }
 
   $effect(() => {
-    if (!map) return;
-    if (map.getLayer("locatie-circles")) {
-      map.setLayoutProperty(
-        "locatie-circles",
-        "visibility",
-        showLocaties ? "visible" : "none",
-      );
-    }
+    console.log(showScholen);
+    map?.setLayoutProperty(
+      "locatie-circles",
+      "visibility",
+      showScholen ? "visible" : "none",
+    );
   });
 
   $effect(() => {
-    locationMarkers.forEach((marker) => {
+    console.log(showStadsdelen);
+    map?.setLayoutProperty(
+      "stadsdelen-fill",
+      "visibility",
+      showStadsdelen ? "visible" : "none",
+    );
+    map?.setLayoutProperty(
+      "stadsdelen-outline",
+      "visibility",
+      showStadsdelen ? "visible" : "none",
+    );
+  });
+
+  $effect(() => {
+    const selectedStadsdeel = stadsdelen.find(
+      (s) => s.id === selectedStadsdeelId,
+    );
+
+    locationMarkers.forEach((marker, index) => {
+      const l = locaties[index];
       const el = marker.getElement();
-      el.style.display = showLocaties && showLabels ? "block" : "none";
+
+      if (selectedLocatieId !== null) {
+        el.style.display = l.id === selectedLocatieId ? "block" : "none";
+      } else if (selectedStadsdeelId !== null) {
+        el.style.display =
+          l.stadsdeel === selectedStadsdeel?.naam ? "block" : "none";
+      } else {
+        el.style.display = "none";
+      }
     });
   });
 
@@ -132,6 +166,27 @@
   function hideSchoolLabel() {
     schoolLabelMarker?.remove();
     schoolLabelMarker = undefined;
+  }
+
+  function getBoundingBox(feature: any): [[number, number], [number, number]] {
+    const coords = feature.geometry.coordinates.flat(2);
+    let minLng = Infinity,
+      maxLng = -Infinity,
+      minLat = Infinity,
+      maxLat = -Infinity;
+
+    for (let i = 0; i < coords.length; i += 2) {
+      const lng = coords[i];
+      const lat = coords[i + 1];
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+    return [
+      [minLng, minLat],
+      [maxLng, maxLat],
+    ];
   }
 
   function updateHighlightSource() {
@@ -170,282 +225,290 @@
   let cachedGeojson: GeoJSON.FeatureCollection | undefined;
 
   $effect(() => {
+    if (selectedStadsdeelId && map && cachedGeojson) {
+      const feature = cachedGeojson.features.find(
+        (f) => f.id === selectedStadsdeelId,
+      );
+      if (!feature) return;
+      const bbox = Array.isArray(feature.geometry.coordinates[0])
+        ? getBoundingBox(feature)
+        : null;
+
+      if (bbox) {
+        map.fitBounds(bbox, { padding: 50, duration: 500 });
+      }
+    }
+  });
+
+  let isInitializing = false;
+
+  const lightStyle =
+    "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+  const darkStyle =
+    "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+
+  $effect(() => {
+    const isDark = mode.current === "dark";
+    if (!map) return;
+
+    map.setStyle(isDark ? darkStyle : lightStyle);
+  });
+
+  $effect(() => {
     if (!mapContainer) return;
 
     map = new maplibregl.Map({
       container: mapContainer,
-      style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+      style: mode.current === "dark" ? darkStyle : lightStyle,
       center: [4.9041, 52.3676],
       zoom: 11,
     });
 
-    map.on("load", async () => {
-      const [geojsonRes, locatiesRes] = await Promise.all([
-        fetch("./stadsdelen.json"),
-        fetch("./locaties.json"),
-      ]);
-      const geojson: GeoJSON.FeatureCollection = await geojsonRes.json();
-      const scholen: {
-        Coordinaten: string;
-        Scholen: string;
-        Buurt: string;
-      }[] = await locatiesRes.json();
-      cachedGeojson = geojson;
+    async function setupMapLayers() {
+      if (!map || isInitializing || map.getSource("stadsdelen")) return;
+      isInitializing = true;
 
-      stadsdelen = geojson.features.map((f) => ({
-        id: f.id as number,
-        naam: f.properties?.Stadsdeel,
-        centroid: f.properties?.Centroid as [number, number],
-      }));
+      try {
+        const data = await loadData();
+        respondents = data.respondents;
+        locaties = data.locations;
+        const locations = data.locations;
 
-      locaties = scholen.map((l, i) => ({
-        naam: l.Scholen,
-        coordinaten: l.Coordinaten.split(",").map((s) =>
-          parseFloat(s.trim()),
-        ) as [number, number],
-        type: "school",
-        stadsdeel: l.Buurt,
-        id: i,
-      }));
+        const res = await fetch("./stadsdelen.json");
+        const geojson: GeoJSON.FeatureCollection = await res.json();
+        cachedGeojson = geojson;
 
-      const locatiesGeojson: GeoJSON.FeatureCollection = {
-        type: "FeatureCollection",
-        features: locaties.map((l) => ({
-          type: "Feature",
-          id: l.id,
-          properties: {
+        stadsdelen = geojson.features.map((f) => ({
+          id: f.id as number,
+          naam: f.properties?.Stadsdeel,
+          centroid: f.properties?.Centroid as [number, number],
+        }));
+
+        const locatiesGeojson: GeoJSON.FeatureCollection = {
+          type: "FeatureCollection",
+          features: locations.map((l) => ({
+            type: "Feature",
             id: l.id,
-            naam: l.naam,
-            type: l.type,
-            buurt: l.stadsdeel,
-          },
-          geometry: {
-            type: "Point",
-            coordinates: [l.coordinaten[1], l.coordinaten[0]],
-          },
-        })),
-      };
+            properties: {
+              id: l.id,
+              naam: l.naam,
+              type: l.type,
+              buurt: l.stadsdeel,
+            },
+            geometry: {
+              type: "Point",
+              coordinates: [l.coordinaten[1], l.coordinaten[0]],
+            },
+          })),
+        };
 
-      observaties = await loadObservations("nl");
+        map!.addSource("stadsdelen", { type: "geojson", data: geojson });
+        map!.addSource("stadsdelen-highlight", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map!.addSource("locaties", {
+          type: "geojson",
+          data: locatiesGeojson,
+          promoteId: "id",
+        });
 
-      let schoolData = await loadSchoolData();
-      let lastId = observaties[observaties.length - 1]?.observationId ?? 0;
-      const ongeldigeLocaties = new Set();
-      schoolData.forEach((row, i) => {
-        const school = locaties.find((s) => s.naam === row.locationName);
-        let stadsdeel = school?.stadsdeel;
-        if (!school || !stadsdeel) {
-          ongeldigeLocaties.add(row.locationName);
+        map!.addLayer({
+          id: "stadsdelen-fill",
+          type: "fill",
+          source: "stadsdelen",
+          paint: { "fill-color": "#00aa00", "fill-opacity": 0.1 },
+        });
+
+        map!.addLayer({
+          id: "stadsdelen-outline",
+          type: "line",
+          source: "stadsdelen",
+          paint: { "line-color": "#00aa00", "line-width": 1.5 },
+        });
+
+        map!.addLayer({
+          id: "stadsdelen-highlight-fill",
+          type: "fill",
+          source: "stadsdelen-highlight",
+          paint: {
+            "fill-color": [
+              "case",
+              ["boolean", ["get", "_selected"], false],
+              "#005500",
+              "#00aa00",
+            ],
+            "fill-opacity": [
+              "case",
+              ["boolean", ["get", "_selected"], false],
+              0.3,
+              0.2,
+            ],
+          },
+        });
+
+        map!.addLayer({
+          id: "stadsdelen-highlight-outline",
+          type: "line",
+          source: "stadsdelen-highlight",
+          paint: {
+            "line-color": "#007700",
+            "line-width": [
+              "case",
+              ["boolean", ["get", "_selected"], false],
+              3,
+              2.5,
+            ],
+          },
+        });
+
+        map.addLayer({
+          id: "locatie-circles",
+          type: "circle",
+          source: "locaties",
+          paint: {
+            "circle-radius": [
+              "case",
+              ["boolean", ["feature-state", "hovered"], false],
+              8,
+              5,
+            ],
+            "circle-color": [
+              "match",
+              ["get", "type"],
+              "school",
+              "#ff4444",
+              "bibliotheek",
+              "#4444ff",
+              "cultureel",
+              "#ff9900",
+              "#ffffff",
+            ],
+            "circle-stroke-width": 3,
+            "circle-stroke-color": "#ffffffbb",
+            "circle-opacity": [
+              "case",
+              ["boolean", ["feature-state", "hovered"], false],
+              1,
+              0.85,
+            ],
+          },
+        });
+
+        map!.addLayer(
+          {
+            id: "extra-dimmer",
+            type: "background",
+            paint: {
+              "background-color":
+                mode.current === "dark" ? "#000000" : "#ffffff",
+              "background-opacity": 0.5,
+            },
+          },
+          "stadsdelen-fill",
+        );
+
+        addLabelMarkers(geojson);
+        addLocationMarkers();
+      } finally {
+        isInitializing = false;
+      }
+    }
+
+    map.on("styledata", () => {
+      setupMapLayers();
+    });
+
+    let lastHoveredLocatieId: number | null = null;
+
+    map!.on("mousemove", "locatie-circles", (e) => {
+      if (!e.features?.length) return;
+
+      const f = e.features[0];
+      const id = f.id;
+
+      if (typeof id !== "number") return;
+
+      if (lastHoveredLocatieId !== null && lastHoveredLocatieId !== id) {
+        map!.setFeatureState(
+          { source: "locaties", id: lastHoveredLocatieId },
+          { hovered: false },
+        );
+        hideSchoolLabel();
+      }
+
+      hoveredLocatieId = id;
+      lastHoveredLocatieId = id;
+
+      map!.setFeatureState({ source: "locaties", id }, { hovered: true });
+
+      showSchoolLabel(f.properties!.naam, e.lngLat);
+    });
+
+    map!.on("mouseleave", "locatie-circles", () => {
+      map!.getCanvas().style.cursor = "";
+
+      if (hoveredLocatieId !== null) {
+        map!.setFeatureState(
+          { source: "locaties", id: hoveredLocatieId },
+          { hovered: false },
+        );
+      }
+
+      hoveredLocatieId = null;
+      hideSchoolLabel();
+    });
+
+    map!.on("mousemove", "stadsdelen-fill", (e) => {
+      if (hoveredLocatieId !== null) return;
+
+      if (!e.features?.length) return;
+      const id = e.features[0].id;
+
+      hoveredStadsdeelId = id as number;
+      updateHighlightSource();
+    });
+
+    map!.on("mouseleave", "stadsdelen-fill", () => {
+      hoveredStadsdeelId = null;
+      updateHighlightSource();
+      map!.getCanvas().style.cursor = "";
+    });
+
+    map!.on("click", (e) => {
+      const locaties = map!.queryRenderedFeatures(e.point, {
+        layers: ["locatie-circles"],
+      });
+
+      if (locaties.length > 0) {
+        const feature = locaties[0];
+        const id = feature.properties?.id ?? feature.id;
+
+        if (id !== undefined && id !== null) {
+          selectedLocatieId = Number(id);
+          selectedStadsdeelId = null;
+          updateHighlightSource();
           return;
         }
+      }
 
-        row.languages.forEach((lang, i) => {
-          observaties.push({
-            id: lastId + i + 1,
-            stadsdeel,
-            locationName: school.naam,
-            displayName: lang,
-            code: row.codes[i],
-          });
-        });
+      const stadsdelen = map!.queryRenderedFeatures(e.point, {
+        layers: ["stadsdelen-fill"],
       });
 
-      console.log(
-        "Ongeldige locaties in schooldata:",
-        Array.from(ongeldigeLocaties),
-      );
-
-      console.log("Observaties na toevoegen schooldata:", observaties);
-
-      map!.addSource("stadsdelen", { type: "geojson", data: geojson });
-      map!.addSource("stadsdelen-highlight", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      map!.addSource("locaties", {
-        type: "geojson",
-        data: locatiesGeojson,
-        promoteId: "id",
-      });
-
-      map!.addLayer({
-        id: "stadsdelen-fill",
-        type: "fill",
-        source: "stadsdelen",
-        paint: { "fill-color": "#00aa00", "fill-opacity": 0.1 },
-      });
-
-      map!.addLayer({
-        id: "stadsdelen-outline",
-        type: "line",
-        source: "stadsdelen",
-        paint: { "line-color": "#00aa00", "line-width": 1.5 },
-      });
-
-      map!.addLayer({
-        id: "stadsdelen-highlight-fill",
-        type: "fill",
-        source: "stadsdelen-highlight",
-        paint: {
-          "fill-color": [
-            "case",
-            ["boolean", ["get", "_selected"], false],
-            "#005500",
-            "#00aa00",
-          ],
-          "fill-opacity": [
-            "case",
-            ["boolean", ["get", "_selected"], false],
-            0.3,
-            0.2,
-          ],
-        },
-      });
-
-      map!.addLayer({
-        id: "stadsdelen-highlight-outline",
-        type: "line",
-        source: "stadsdelen-highlight",
-        paint: {
-          "line-color": "#007700",
-          "line-width": [
-            "case",
-            ["boolean", ["get", "_selected"], false],
-            3,
-            2.5,
-          ],
-        },
-      });
-
-      map.addLayer({
-        id: "locatie-circles",
-        type: "circle",
-        source: "locaties",
-        paint: {
-          "circle-radius": [
-            "case",
-            ["boolean", ["feature-state", "hovered"], false],
-            8,
-            5,
-          ],
-          "circle-color": "#ff4444",
-          "circle-stroke-width": 1.5,
-          "circle-stroke-color": "#ffffffbb",
-          "circle-opacity": [
-            "case",
-            ["boolean", ["feature-state", "hovered"], false],
-            1,
-            0.85,
-          ],
-        },
-      });
-
-      map!.addLayer(
-        {
-          id: "extra-dimmer",
-          type: "background",
-          paint: {
-            "background-color": "#000000",
-            "background-opacity": 0.5,
-          },
-        },
-        "stadsdelen-fill",
-      );
-
-      addLabelMarkers(geojson);
-      addLocationMarkers();
-
-      let lastHoveredLocatieId: number | null = null;
-
-      map!.on("mousemove", "locatie-circles", (e) => {
-        if (!e.features?.length) return;
-
-        const f = e.features[0];
-        const id = f.id;
-
-        if (typeof id !== "number") return;
-
-        if (lastHoveredLocatieId !== null && lastHoveredLocatieId !== id) {
-          map!.setFeatureState(
-            { source: "locaties", id: lastHoveredLocatieId },
-            { hovered: false },
-          );
-          hideSchoolLabel();
+      if (stadsdelen.length > 0) {
+        const id = stadsdelen[0].id;
+        if (id !== undefined) {
+          selectedStadsdeelId = id as number;
+          selectedLocatieId = null;
+          updateHighlightSource();
+          return;
         }
+      }
 
-        hoveredLocatieId = id;
-        lastHoveredLocatieId = id;
-
-        map!.setFeatureState({ source: "locaties", id }, { hovered: true });
-
-        showSchoolLabel(f.properties!.naam, e.lngLat);
-      });
-
-      map!.on("mouseleave", "locatie-circles", () => {
-        map!.getCanvas().style.cursor = "";
-
-        if (hoveredLocatieId !== null) {
-          map!.setFeatureState(
-            { source: "locaties", id: hoveredLocatieId },
-            { hovered: false },
-          );
-        }
-
-        hoveredLocatieId = null;
-        hideSchoolLabel();
-      });
-
-      map!.on("mousemove", "stadsdelen-fill", (e) => {
-        if (hoveredLocatieId !== null) return;
-
-        if (!e.features?.length) return;
-        const id = e.features[0].id;
-
-        hoveredStadsdeelId = id as number;
-        updateHighlightSource();
-      });
-
-      map!.on("mouseleave", "stadsdelen-fill", () => {
-        hoveredStadsdeelId = null;
-        updateHighlightSource();
-        map!.getCanvas().style.cursor = "";
-      });
-
-      map!.on("click", (e) => {
-        const locaties = map!.queryRenderedFeatures(e.point, {
-          layers: ["locatie-circles"],
-        });
-
-        if (locaties.length > 0) {
-          const feature = locaties[0];
-          const id = feature.properties?.id ?? feature.id;
-
-          if (id !== undefined && id !== null) {
-            selectedLocatieId = Number(id);
-            selectedStadsdeelId = null;
-            updateHighlightSource();
-            return;
-          }
-        }
-
-        const stadsdelen = map!.queryRenderedFeatures(e.point, {
-          layers: ["stadsdelen-fill"],
-        });
-
-        if (stadsdelen.length > 0) {
-          const id = stadsdelen[0].id;
-          if (id !== undefined) {
-            selectedStadsdeelId = id as number;
-            selectedLocatieId = null;
-            updateHighlightSource();
-            return;
-          }
-        }
-
-        selectedLocatieId = null;
-        selectedStadsdeelId = null;
-        updateHighlightSource();
-      });
+      selectedLocatieId = null;
+      selectedStadsdeelId = null;
+      updateHighlightSource();
     });
 
     return () => {
@@ -458,112 +521,235 @@
 
 <ModeWatcher />
 
-<header class="p-6 border-b border-gray-300 dark:border-gray-700 relative">
-  <h1 class="text-xl font-bold">Talenkaart Amsterdam</h1>
-  <div class="flex gap-2 fixed top-0 right-0 m-2">
+<header
+  class="flex items-center justify-between p-6 border-b border-gray-300 dark:border-gray-700"
+>
+  <h1 class="text-xl font-bold">
+    {locale === "nl" ? "Talenkaart Amsterdam" : "Language Map Amsterdam"}
+  </h1>
+
+  <div class="flex items-center gap-2">
     <LanguageToggle
-      class="z-50"
       onclick={() => (locale = locale === "nl" ? "en" : "nl")}
-      content={locale === "nl" ? "🇳🇱 " : "🇬🇧 "}
+      {locale}
     />
-    <LightSwitch></LightSwitch>
+    <LightSwitch />
   </div>
 </header>
 
-<!-- <div
-  class="px-12 py-4 flex gap-6 items-center bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800"
->
-  <label class="flex items-center cursor-pointer select-none">
-    <input type="checkbox" bind:checked={showLocaties} class="mr-2 w-4 h-4" />
-    <span class="text-sm font-medium">Locaties tonen</span>
-  </label>
-
-  <label
-    class="flex items-center cursor-pointer select-none"
-    class:opacity-50={!showLocaties}
-  >
-    <input
-      type="checkbox"
-      bind:checked={showLabels}
-      disabled={!showLocaties}
-      class="mr-2 w-4 h-4"
-    />
-    <span class="text-sm font-medium">Labels tonen</span>
-  </label>
-</div> -->
-
-<Card class="m-12 p-0 relative">
-  <div bind:this={mapContainer} class="w-full h-[600px] rounded-lg" />
-  <div
-    class="absolute bottom-4 left-4 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-md"
-  >
-    <ul class="text-[13px] font-[600] text-gray-700 dark:text-gray-300">
-      <li>
-        <Checkbox bind:checked={showLocaties} class="inline"></Checkbox>
-        <span style:color="green">--</span> Stadsdelen
-      </li>
-      <li>
-        <Checkbox bind:checked={showLocaties} class="inline"></Checkbox>
-        <span style:color="red">●</span> Scholen
-      </li>
-      <li>
-        <Checkbox bind:checked={showLocaties} class="inline"></Checkbox>
-        <span style:color="blue">●</span> Bibliotheken
-      </li>
-    </ul>
-  </div>
-</Card>
-
-{#if selectedLocatieId !== null}
-  {@const naam = locaties.find((l) => l.id === selectedLocatieId)?.naam}
-  {@const type = locaties.find((l) => l.id === selectedLocatieId)?.type}
-  {@const obs = observaties.filter((o) => o.locationName === naam)}
-  <Card class="m-12 p-5">
-    <h2 class="text-xl font-semibold mb-4">
-      {naam}
-      (<i>{type}</i>)
-    </h2>
-    {obs.length} observaties.
-    <br />
-    <TaalOverzicht observations={obs} {locale} allObservations={observaties} />
+<div class="max-w-[1200px] mx-auto">
+  <Card class="m-8 p-0 relative">
+    <div bind:this={mapContainer} class="w-full h-[600px] rounded-lg" />
+    <div
+      class="absolute bottom-4 left-4 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-md"
+    >
+      <ul class="text-[13px] font-[600] text-gray-700 dark:text-gray-300">
+        <li class="p-0.5">
+          <Checkbox bind:checked={showStadsdelen} class="inline mr-2"
+          ></Checkbox>
+          <span style:color="green">--</span> Stadsdelen
+        </li>
+        <li class="p-0.5">
+          <Checkbox bind:checked={showScholen} class="inline mr-2"></Checkbox>
+          <span style:color="red">●</span> Scholen
+        </li>
+        <li class="p-0.5">
+          <Checkbox bind:checked={showBibliotheken} class="inline mr-2"
+          ></Checkbox>
+          <span style:color="blue">●</span> Bibliotheken
+        </li>
+      </ul>
+    </div>
   </Card>
-{/if}
 
-{#if selectedStadsdeelId !== null}
-  {@const naam = stadsdelen.find((s) => s.id === selectedStadsdeelId)?.naam}
-  {@const loc = locaties.filter((l) => l.stadsdeel === naam)}
-  {@const obs = observaties.filter((o) => o.stadsdeel === naam)}
-  <Card class="m-12 p-5">
-    <h2 class="text-xl font-semibold mb-4">
-      Amsterdam → Stadsdeel
-      <i>
-        {stadsdelen.find((s) => s.id === selectedStadsdeelId)?.naam}
-      </i>
-    </h2>
-    <Tabs.Root value="observaties" class="">
-      <Tabs.List>
-        <Tabs.Trigger value="observaties">Talen</Tabs.Trigger>
-        <Tabs.Trigger value="locaties">Locaties</Tabs.Trigger>
-      </Tabs.List>
-      <Tabs.Content value="locaties" class="m-0">
-        <i class="font-medium mb-2">
-          {loc.length}
-          {loc.length == 1 ? "locatie" : "locaties"} in {naam}:
-        </i>
-        <ul class="list-disc list-inside">
-          {#each loc as locatie}
-            <li>{locatie.naam} ({locatie.type})</li>
+  {#if respondents}
+    {@const selectedStadsdeel = stadsdelen.find(
+      (s) => s.id == selectedStadsdeelId,
+    )}
+    {@const selectedLocatie = locaties.find((l) => l.id == selectedLocatieId)}
+
+    {@const res = respondents.filter((r) => {
+      if (selectedLocatie) return r.locationName == selectedLocatie.naam;
+      if (selectedStadsdeel) return r.stadsdeel == selectedStadsdeel.naam;
+      return true;
+    })}
+
+    {@const langs = res
+      .flatMap((r) => r.languages)
+      .reduce(
+        (acc, { code, nameNL, nameEN }) => {
+          acc[code] = { nameNL, nameEN };
+          return acc;
+        },
+        {} as Record<string, { nameNL: string; nameEN: string }>,
+      )}
+
+    {@const occurrences = res
+      .flatMap((r) => r.languages)
+      .reduce(
+        (acc, l) => {
+          if (!acc[l.code])
+            acc[l.code] = { total: 0, homeLanguage: 0, proficient: 0 };
+          acc[l.code].total += 1;
+          if (l.homeLanguage) acc[l.code].homeLanguage += 1;
+          if (l.proficient) acc[l.code].proficient += 1;
+          return acc;
+        },
+        {} as Record<
+          string,
+          { total: number; homeLanguage: number; proficient: number }
+        >,
+      )}
+
+    {@const cooccurrences = res.reduce(
+      (acc, respondent) => {
+        const codes = respondent.languages
+          .filter(
+            (l) =>
+              (!languageFilters.homeLanguage || l.homeLanguage) &&
+              (!languageFilters.proficient || l.proficient),
+          )
+          .map((l) => l.code);
+
+        codes.forEach((codeA) => {
+          if (!acc[codeA]) acc[codeA] = {};
+          codes.forEach((codeB) => {
+            if (codeA !== codeB) {
+              acc[codeA][codeB] = (acc[codeA][codeB] || 0) + 1;
+            }
+          });
+        });
+        return acc;
+      },
+      {} as Record<string, Record<string, number>>,
+    )}
+
+    {@const checkedLangs = Array(occurrences.length).fill(false)}
+    <Card class="m-8 p-10">
+      <h2 class="text-xl font-semibold">
+        <span
+          class="rounded-l cursor-pointer"
+          onclick={() => {
+            selectedLocatieId = null;
+            selectedStadsdeelId = null;
+          }}>Amsterdam</span
+        >
+        {#if !selectedStadsdeelId && !selectedLocatieId}
+          <span class="opacity-50 text-lg"
+            >&rarr; Selecteer een stadsdeel of locatie op de kaart...</span
+          >
+        {/if}
+        {#if selectedStadsdeelId}
+          &rarr; {selectedStadsdeel.naam}
+        {/if}
+        {#if selectedLocatieId}
+          &rarr; {selectedLocatie?.stadsdeel}
+          &rarr; {selectedLocatie.naam}
+          (<i>{selectedLocatie?.type}</i>)
+        {/if}
+      </h2>
+
+      {#if res.length == 0}
+        <p class="opacity-50">Geen data over dit gebied...</p>
+      {:else}
+        <div>
+          {@html locale === "nl"
+            ? `Onder de <span class='underline'>${res.length}</span> ondervraagden
+          worden de volgende talen`
+            : `Among the <span class='underline'>${res.length}</span> respondents,
+          the following languages are spoken`}
+          <ul>
+            <li class="p-1">
+              <Checkbox
+                bind:checked={languageFilters.proficient}
+                class="inline relative top-[1px]"
+              />
+              <span style:opacity={languageFilters.proficient ? 1 : 0.5}
+                >{locale === "nl" ? `vloeiend 💯` : `fluent 💯`}</span
+              >
+              <span
+                style:opacity={languageFilters.homeLanguage &&
+                languageFilters.proficient
+                  ? 1
+                  : 0.5}>en/of</span
+              >
+            </li>
+            <li class="p-1">
+              <Checkbox
+                bind:checked={languageFilters.homeLanguage}
+                class="inline relative top-[1px]"
+              />
+              <span style:opacity={languageFilters.homeLanguage ? 1 : 0.5}
+                >{locale === "nl" ? `thuis 🏠` : `at home 🏠`}</span
+              >
+            </li>
+          </ul>
+          {#if locale == "nl"}
+            gesproken:
+          {/if}
+        </div>
+        <ul>
+          {#each Object.entries(occurrences)
+            .filter(([, o]) => (!languageFilters.homeLanguage || o.homeLanguage > 0) && (!languageFilters.proficient || o.proficient > 0))
+            .sort((a, b) => b[1].total - a[1].total) as [code, o]}
+            {@const count = languageFilters.homeLanguage
+              ? o.homeLanguage
+              : languageFilters.proficient
+                ? o.proficient
+                : o.total}
+
+            {@const topCooc = Object.entries(cooccurrences[code] ?? {})
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3)}
+
+            <li class="p-2 odd:bg-gray-500/10 rounded-lg">
+              <Checkbox class="inline mr-1" />
+              <span class="underline"
+                >{locale === "nl"
+                  ? langs[code].nameNL
+                  : langs[code].nameEN},</span
+              >
+              <span class="text-sm">
+                {count}
+                {count > 1 ? "sprekers" : "spreker"}
+                <b>({((count / res.length) * 100).toFixed(1)}%)</b>
+              </span>
+
+              <ul class="text-xs text-gray-500 mt-1 ml-4">
+                {#if !languageFilters.homeLanguage && !languageFilters.proficient}
+                  <li>
+                    Vloeiend ({o.proficient}x) ({(
+                      (o.proficient / o.total) *
+                      100
+                    ).toFixed(1)}%)
+                  </li>
+                  <li>
+                    Thuistaal ({o.homeLanguage}x) ({(
+                      (o.homeLanguage / o.total) *
+                      100
+                    ).toFixed(1)}%)
+                  </li>
+                {/if}
+                {#if topCooc.length > 0}
+                  {#each topCooc as [coocCode, coocCount]}
+                    <li>
+                      + {locale === "nl"
+                        ? langs[coocCode]?.nameNL
+                        : langs[coocCode]?.nameEN}
+                      ({coocCount}x) ({((coocCount / res.length) * 100).toFixed(
+                        1,
+                      )}%)
+                    </li>
+                  {/each}
+                {/if}
+              </ul>
+            </li>
           {/each}
         </ul>
-      </Tabs.Content>
-      <Tabs.Content value="observaties">
-        Onder de <b>{obs.length}</b> ondervraagden in <i>{naam}</i> worden de
-        volgende talen gesproken:
-        <TaalOverzicht observations={obs} {locale} />
-      </Tabs.Content>
-    </Tabs.Root>
-  </Card>
-{/if}
+      {/if}
+    </Card>
+  {/if}
+</div>
 
 <style>
   @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Teko:wght@300..700&display=swap");
