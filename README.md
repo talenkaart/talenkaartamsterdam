@@ -1,17 +1,28 @@
 # Talenkaart Applicatie
 Talenkaart applicatie Amsterdam
 
-## Data
+## Data beheren
 
-De data voor deze applicatie wordt beheerd via een Excel-bestand. Je vindt de bestanden in de map [`static/TALENKAART_DATA`](./static/TALENKAART_DATA) in deze repository.
+De data voor deze applicatie staat in een Excel-bestand op GitHub. Je hebt geen technische kennis nodig om de data aan te passen — volg gewoon de stappen hieronder.
 
-### Hoe werkt het?
+### Data bekijken en downloaden
 
-De applicatie leest de Excel-bestanden in uit `static/TALENKAART_DATA` en verwerkt deze bij het laden van de pagina. Wijzigingen in de data doe je door de Excel-bestanden in die map bij te werken en de wijzigingen te committen naar de repository.
+De Excel-bestanden staan hier: [`static/TALENKAART_DATA`](./static/TALENKAART_DATA)
+
+Klik op een bestand en kies vervolgens de downloadknop (het icoontje met een pijltje naar beneden) om het te downloaden.
 
 ### Data aanpassen
 
-1. Navigeer naar [`static/TALENKAART_DATA`](./static/TALENKAART_DATA)
-2. Download of bewerk het gewenste Excel-bestand
-3. Sla op en commit de wijzigingen naar GitHub
-4. De applicatie laadt automatisch de nieuwe data bij de volgende deployment
+1. Ga naar de map [`static/TALENKAART_DATA`](./static/TALENKAART_DATA)
+2. Klik op het Excel-bestand dat je wilt aanpassen
+3. Download het bestand via de downloadknop rechtsboven
+4. Pas de data aan in Excel op je eigen computer
+5. Ga terug naar dezelfde pagina op GitHub
+6. Klik op het potloodicoontje (✏️) of sleep je aangepaste bestand naar de pagina om het te uploaden
+7. Scroll naar beneden en klik op **"Commit changes"** om de wijzigingen op te slaan
+
+De applicatie laadt automatisch de nieuwe data zodra de wijzigingen zijn opgeslagen.
+
+---
+
+*Heb je vragen of lukt het niet? Neem contact op met de beheerder van deze applicatie.*
