@@ -524,9 +524,15 @@
 <ModeWatcher />
 
 <header
-  class="flex items-center justify-between p-6 border-b border-gray-300 dark:border-gray-700"
+  class="flex items-center justify-between px-6 pt-6 pb-8 border-b border-gray-300 dark:border-gray-700 overflow-visible"
 >
-  <h1 class="text-xl font-bold">
+  <h1
+    class="relative inline-block text-xl font-bold bg-purple-600/25 rounded-md px-4 py-2 drop-shadow-lg
+  after:content-[''] after:absolute after:bottom-[-20px] after:left-6 after:w-0 after:h-0
+  after:border-l-[20px] after:border-l-transparent
+  after:border-t-[20px] after:border-t-purple-600/25
+  after:border-r-[4px] after:border-r-transparent"
+  >
     {locale === "nl" ? "Talenkaart Amsterdam" : "Language Map Amsterdam"}
   </h1>
 
