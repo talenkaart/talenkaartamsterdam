@@ -34,9 +34,9 @@ export async function loadData(locale: "nl" | "en" = "nl") {
     const talenSheet = XLSX.utils.sheet_to_json<{ "ISO 639-3": string, NL: string, EN: string }>(workbook.Sheets["Talen"]);
     const talenMap = new Map(talenSheet.map(t => [t["ISO 639-3"], { nl: t.NL, en: t.EN }]));
 
+
     // 2. Locaties inlezen
     const locatiesRaw = XLSX.utils.sheet_to_json<any>(workbook.Sheets["Locaties"]);
-    if (locatiesRaw.filter(i => !i.Coordinaten)) console.warn("Locaties met missende coordinaten: ", locatiesRaw.filter(i => !i.Coordinaten))
     const locations: Locatie[] = locatiesRaw
         .filter(l => l.Coordinaten)
         .map((l, i) => ({
@@ -51,37 +51,54 @@ export async function loadData(locale: "nl" | "en" = "nl") {
     const respondentenSheet = XLSX.utils.sheet_to_json<any[]>(workbook.Sheets["Respondenten"], { header: 1 });
     const [header, ...rows] = respondentenSheet;
 
-    const respondents: Respondent[] = rows.map((row, index) => {
-        const locationName = row[0];
-        const stadsdeel = row[1];
-        const postcode = row[2] || "";
+    const respondents: Respondent[] = rows
+        .filter((row, index) => {
+            const locationName = row[0];
+            if (!locations.find(l => l.naam == locationName)) {
+                console.warn(`Respondent #${index + 2}: Locatie niet gevonden: ${locationName}`);
+                return false;
+            }
+            return true;
+        })
+        .map((row, index) => {
+            const locationName = row[0];
+            const stadsdeel = row[1];
+            const postcode = row[2] || "";
 
-        const vloeiend = (row[3] || "").split(",").map((s: string) => s.trim()).filter(Boolean);
-        const basis = (row[4] || "").split(",").map((s: string) => s.trim()).filter(Boolean);
-        const thuis = (row[5] || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+            const vloeiend = (row[3] || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+            const basis = (row[4] || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+            const thuis = (row[5] || "").split(",").map((s: string) => s.trim()).filter(Boolean);
 
-        const alleTalen = Array.from(new Set([...vloeiend, ...thuis, ...basis]));
+            const alleTalen = Array.from(new Set([...vloeiend, ...thuis, ...basis]));
 
-        const languages: RespondentLanguage[] = alleTalen.map(code => {
-            const vertaling = talenMap.get(code);
+            const languages: RespondentLanguage[] = alleTalen
+                .filter(code => {
+                    if (!talenMap.has(code)) {
+                        console.warn(`Respondent #${index + 2}: Taal niet gevonden: ${code}`);
+                        return false;
+                    }
+                    return true;
+                })
+                .map(code => {
+                    const vertaling = talenMap.get(code);
+                    return {
+                        code: code,
+                        nameNL: vertaling?.nl || code,
+                        nameEN: vertaling?.en || code,
+                        proficient: vloeiend.includes(code),
+                        homeLanguage: thuis.includes(code),
+                        basic: basis.includes(code)
+                    };
+                });
+
             return {
-                code: code,
-                nameNL: vertaling?.nl || code,
-                nameEN: vertaling?.en || code,
-                proficient: vloeiend.includes(code),
-                homeLanguage: thuis.includes(code),
-                basic: basis.includes(code)
+                respondentId: index + 1,
+                locationName,
+                stadsdeel,
+                postcode,
+                languages
             };
         });
-
-        return {
-            respondentId: index + 1,
-            locationName,
-            stadsdeel,
-            postcode,
-            languages
-        };
-    });
 
     return { locations, respondents };
 }

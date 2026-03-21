@@ -1,8 +1,8 @@
 <script lang="ts">
   import Card from "$lib/components/ui/card/card.svelte";
-  import * as Tabs from "$lib/components/ui/tabs/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import LightSwitch from "$lib/components/ui/light-switch/light-switch.svelte";
+  import { X } from "lucide-svelte";
 
   import maplibregl from "maplibre-gl";
   import "maplibre-gl/dist/maplibre-gl.css";
@@ -12,14 +12,7 @@
 
   let mapContainer: HTMLDivElement | undefined = $state();
   let map: maplibregl.Map | undefined;
-  let markers: maplibregl.Marker[] = [];
   let schoolLabelMarker: maplibregl.Marker | undefined;
-
-  // import {
-  //   loadObservations,
-  //   loadSchoolData,
-  //   type Observation,
-  // } from "$lib/data/loadObservations";
 
   import {
     loadData,
@@ -27,7 +20,6 @@
     type RespondentLanguage,
     type Locatie,
   } from "$lib/data/loadRespondents";
-  import Button from "$lib/components/ui/button/button.svelte";
 
   type Stadsdeel = {
     id: number;
@@ -37,20 +29,92 @@
 
   let locale = $state("nl");
 
-  let stadsdelen: Stadsdeel[] = $state([]);
-  let locaties: Locatie[] = $state([]);
-  let respondents = $state<Respondent[]>([]);
-
-  let languageFilters = $state({
-    homeLanguage: false,
-    proficient: false,
-  });
+  let stadsdelen: Stadsdeel[] = $state.raw([]);
+  let locaties: Locatie[] = $state.raw([]);
+  let respondents = $state.raw<Respondent[]>([]);
 
   let hoveredStadsdeelId = $state<number | null>(null);
   let selectedStadsdeelId = $state<number | null>(null);
 
   let hoveredLocatieId = $state<number | null>(null);
   let selectedLocatieId = $state<number | null>(null);
+
+  let filteredRes = $derived.by(() => {
+    const stadsdeel = stadsdelen.find((s) => s.id === selectedStadsdeelId);
+    const locatie = locaties.find((l) => l.id === selectedLocatieId);
+
+    const f = respondents.filter((r) => {
+      if (locatie) return r.locationName === locatie.naam;
+      if (stadsdeel) return r.stadsdeel === stadsdeel.naam;
+      return true;
+    });
+    return f;
+  });
+
+  let [languageOccurences, languageNames, languageSelected] = $derived.by(
+    () => {
+      const occ = {};
+      const names = {};
+      const selected = $state({});
+
+      for (const r of filteredRes) {
+        for (const l of r.languages) {
+          if (!occ[l.code]) {
+            occ[l.code] = { total: 0, homeLanguage: 0, proficient: 0 };
+            names[l.code] = { nameNL: l.nameNL, nameEN: l.nameEN };
+            selected[l.code] = false;
+          }
+          occ[l.code].total++;
+          if (l.homeLanguage) occ[l.code].homeLanguage++;
+          if (l.proficient) occ[l.code].proficient++;
+        }
+      }
+      return [occ, names, selected];
+    },
+  );
+
+  let cooccurrences = $derived.by(() => {
+    const acc = {};
+    for (const r of filteredRes) {
+      const codes = r.languages
+        .filter(
+          (l) =>
+            (!languageFilters.homeLanguage || l.homeLanguage) &&
+            (!languageFilters.proficient || l.proficient),
+        )
+        .map((l) => l.code);
+
+      for (let i = 0; i < codes.length; i++) {
+        const a = codes[i];
+        if (!acc[a]) acc[a] = {};
+        for (let j = 0; j < codes.length; j++) {
+          if (i !== j) {
+            const b = codes[j];
+            acc[a][b] = (acc[a][b] || 0) + 1;
+          }
+        }
+      }
+    }
+    return acc;
+  });
+
+  let sortedLangs = $derived.by(() => {
+    const { occ } = languageOccurences;
+    return Object.entries(occ)
+      .filter(
+        ([, o]) =>
+          (!languageFilters.homeLanguage || o.homeLanguage > 0) &&
+          (!languageFilters.proficient || o.proficient > 0),
+      )
+      .sort((a, b) => b[1].total - a[1].total);
+  });
+
+  let selectedStadsdeel = $derived(
+    stadsdelen.find((s) => s.id == selectedStadsdeelId),
+  );
+  let selectedLocatie = $derived(
+    locaties.find((l) => l.id == selectedLocatieId),
+  );
 
   let showLocaties = $state(true);
   let showLabels = $state(true);
@@ -61,6 +125,11 @@
 
   let locationMarkers = $state<maplibregl.Marker[]>([]);
   let stadsdeelMarkers = $state<maplibregl.Marker[]>([]);
+
+  let languageFilters = $state({
+    homeLanguage: false,
+    proficient: false,
+  });
 
   function clearMarkers() {
     locationMarkers.forEach((m) => m.remove());
@@ -519,18 +588,22 @@
   });
 
   let showLangStatistics = $state(true);
+
+  $effect(() => {
+    console.log(filteredRes);
+  });
 </script>
 
 <ModeWatcher />
 
 <header
-  class="flex items-center justify-between px-6 pt-6 pb-8 border-b border-gray-300 dark:border-gray-700 overflow-visible"
+  class="flex items-center justify-between h-16 px-6 pt-6 pb-8 border-b border-gray-300 dark:border-gray-700 overflow-visible"
 >
   <h1
-    class="relative inline-block text-xl font-bold bg-purple-600/25 rounded-md px-4 py-2 drop-shadow-lg
-  after:content-[''] after:absolute after:bottom-[-20px] after:left-6 after:w-0 after:h-0
+    class="relative top-1 inline-block text-md sm:text-xl md:text-text-lg font-bold border-2 border-purple-500/33 rounded-md px-4 py-2
+  after:content-[''] after:absolute after:bottom-[-22px] after:left-6 after:w-0 after:h-0
   after:border-l-[20px] after:border-l-transparent
-  after:border-t-[20px] after:border-t-purple-600/25
+  after:border-t-[20px] after:border-t-purple-500/33
   after:border-r-[4px] after:border-r-transparent"
   >
     {locale === "nl" ? "Talenkaart Amsterdam" : "Language Map Amsterdam"}
@@ -546,8 +619,8 @@
 </header>
 
 <div class="max-w-[1200px] mx-auto">
-  <Card class="m-8 p-0 relative">
-    <div bind:this={mapContainer} class="w-full h-[600px] rounded-lg" />
+  <Card class="m-4 sm:m-8 p-0 relative">
+    <div bind:this={mapContainer} class="w-full h-[600px] rounded-lg"></div>
     <div
       class="absolute bottom-4 left-4 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-md"
     >
@@ -574,69 +647,7 @@
   </Card>
 
   {#if respondents}
-    {@const selectedStadsdeel = stadsdelen.find(
-      (s) => s.id == selectedStadsdeelId,
-    )}
-    {@const selectedLocatie = locaties.find((l) => l.id == selectedLocatieId)}
-
-    {@const res = respondents.filter((r) => {
-      if (selectedLocatie) return r.locationName == selectedLocatie.naam;
-      if (selectedStadsdeel) return r.stadsdeel == selectedStadsdeel.naam;
-      return true;
-    })}
-
-    {@const langs = res
-      .flatMap((r) => r.languages)
-      .reduce(
-        (acc, { code, nameNL, nameEN }) => {
-          acc[code] = { nameNL, nameEN };
-          return acc;
-        },
-        {} as Record<string, { nameNL: string; nameEN: string }>,
-      )}
-
-    {@const occurrences = res
-      .flatMap((r) => r.languages)
-      .reduce(
-        (acc, l) => {
-          if (!acc[l.code])
-            acc[l.code] = { total: 0, homeLanguage: 0, proficient: 0 };
-          acc[l.code].total += 1;
-          if (l.homeLanguage) acc[l.code].homeLanguage += 1;
-          if (l.proficient) acc[l.code].proficient += 1;
-          return acc;
-        },
-        {} as Record<
-          string,
-          { total: number; homeLanguage: number; proficient: number }
-        >,
-      )}
-
-    {@const cooccurrences = res.reduce(
-      (acc, respondent) => {
-        const codes = respondent.languages
-          .filter(
-            (l) =>
-              (!languageFilters.homeLanguage || l.homeLanguage) &&
-              (!languageFilters.proficient || l.proficient),
-          )
-          .map((l) => l.code);
-
-        codes.forEach((codeA) => {
-          if (!acc[codeA]) acc[codeA] = {};
-          codes.forEach((codeB) => {
-            if (codeA !== codeB) {
-              acc[codeA][codeB] = (acc[codeA][codeB] || 0) + 1;
-            }
-          });
-        });
-        return acc;
-      },
-      {} as Record<string, Record<string, number>>,
-    )}
-
-    {@const checkedLangs = Array(occurrences.length).fill(false)}
-    <Card class="m-8 p-10">
+    <Card class="m-4 sm:m-8 p-4 md:p-10 sm:p-6 ">
       <h2 class="text-xl font-semibold">
         <span
           class="rounded-l cursor-pointer"
@@ -662,14 +673,14 @@
         {/if}
       </h2>
 
-      {#if res.length == 0}
+      {#if filteredRes.length == 0}
         <p class="opacity-50">Geen data over dit gebied...</p>
       {:else}
         <div>
           {@html locale === "nl"
-            ? `Onder de <span class='underline'>${res.length}</span> ondervraagden
+            ? `Onder de <span class='underline'>${filteredRes.length}</span> ondervraagden
           worden de volgende talen`
-            : `Among the <span class='underline'>${res.length}</span> respondents,
+            : `Among the <span class='underline'>${filteredRes.length}</span> respondents,
           the following languages are spoken`}
           <ul>
             <li class="p-1">
@@ -701,8 +712,59 @@
             gesproken:
           {/if}
         </div>
+
+        {#if Object.values(languageSelected).includes(true)}
+          {@const langsSelected = Object.keys(languageSelected).filter(
+            (k) => languageSelected[k] === true,
+          )}
+          {@const langNames = langsSelected.map(
+            (code) =>
+              languageNames[code][locale === "nl" ? "nameNL" : "nameEN"],
+          )}
+          {@const langCombination = filteredRes.filter((r) =>
+            langsSelected.every((code) =>
+              r.languages.some(
+                (l) =>
+                  l.code === code &&
+                  (!languageFilters.homeLanguage || l.homeLanguage) &&
+                  (!languageFilters.proficient || l.proficient),
+              ),
+            ),
+          )}
+          <div class="bg-gray-500/10 p-2 rounded-lg">
+            <X
+              onclick={() =>
+                Object.keys(languageSelected).forEach(
+                  (k) => (languageSelected[k] = false),
+                )}
+              class="inline size-4 opacity-50 cursor-pointer mr-1"
+            ></X>
+            {#if !langCombination.length}
+              Geen van de
+            {:else}
+              <span class="underline">{langCombination.length}</span> van de
+            {/if}
+            ondervraagden (<b class="text-sm"
+              >{((langCombination.length / filteredRes.length) * 100).toFixed(
+                1,
+              )}%</b
+            >) spreken
+            {#if langNames.length > 1}
+              {@html langNames.slice(0, -1).join(", ") +
+                " <b>en</b> " +
+                langNames.slice(-1)[0]}
+            {:else}
+              {langNames[0]}
+            {/if}
+            <!-- Nog naar Engels!! -->
+          </div>
+        {:else}
+          <div class="bg-gray-500/10 p-2 rounded-lg">
+            Selecteer meerdere talen om
+          </div>
+        {/if}
         <ul>
-          {#each Object.entries(occurrences)
+          {#each Object.entries(languageOccurences)
             .filter(([, o]) => (!languageFilters.homeLanguage || o.homeLanguage > 0) && (!languageFilters.proficient || o.proficient > 0))
             .sort((a, b) => b[1].total - a[1].total) as [code, o]}
             {@const count = languageFilters.homeLanguage
@@ -716,13 +778,16 @@
               .slice(0, 3)}
 
             <li class="p-2 odd:bg-gray-500/10 rounded-lg">
-              <Checkbox class="inline mr-1" />
+              <Checkbox
+                class="inline mr-1 relative top-[1px]"
+                bind:checked={languageSelected[code]}
+              />
               <span
                 class="underline cursor-pointer"
                 onclick={() => (showLangStatistics = !showLangStatistics)}
                 >{locale === "nl"
-                  ? langs[code].nameNL
-                  : langs[code].nameEN},</span
+                  ? languageNames[code].nameNL
+                  : languageNames[code].nameEN},</span
               >
               <span class="text-sm">
                 {count}
@@ -733,7 +798,7 @@
                   : count > 1
                     ? "speakers"
                     : "speaker"}
-                <b>({((count / res.length) * 100).toFixed(1)}%)</b>
+                <b>({((count / filteredRes.length) * 100).toFixed(1)}%)</b>
               </span>
 
               {#if showLangStatistics}
@@ -758,10 +823,10 @@
                     {#each topCooc as [coocCode, coocCount]}
                       <li>
                         + {locale === "nl"
-                          ? langs[coocCode]?.nameNL
-                          : langs[coocCode]?.nameEN}
+                          ? languageNames[coocCode]?.nameNL
+                          : languageNames[coocCode]?.nameEN}
                         ({coocCount}x) ({(
-                          (coocCount / res.length) *
+                          (coocCount / filteredRes.length) *
                           100
                         ).toFixed(1)}%)
                       </li>
@@ -776,6 +841,19 @@
     </Card>
   {/if}
 </div>
+
+<footer class="bg-gray-500/10 p-6 text-center">
+  <h3>
+    <b>Talenkaart Amsterdam</b>, Universiteit van Amsterdam, 2025.
+  </h3>
+  <br />
+  Data verzameld via enquetes op scholen en in stadsdelen in Amsterdam. Respondenten
+  zijn anoniem; er worden geen persoonsgegevens opgeslagen.
+  <br /><br />
+  <a class="underline" href="https://github.com/talenkaart/talenkaartamsterdam"
+    >GitHub repository &rarr;</a
+  >
+</footer>
 
 <style>
   @import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Teko:wght@300..700&display=swap");

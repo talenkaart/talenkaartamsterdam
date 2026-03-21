@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      lucide-svelte:
+        specifier: ^0.577.0
+        version: 0.577.0(svelte@5.46.1)
       maplibre-gl:
         specifier: ^5.15.0
         version: 5.15.0
@@ -793,6 +796,11 @@ packages:
 
   locate-character@3.0.0:
     resolution: {integrity: sha512-SW13ws7BjaeJ6p7Q6CO2nchbYEc3X3J6WrmTTDto7yMPqVSZTUyY5Tjbid+Ab8gLnATtygYtiDIJGQRRn2ZOiA==}
+
+  lucide-svelte@0.577.0:
+    resolution: {integrity: sha512-0i88o57KsaHWnc80J57fY99CWzlZsSdtH5kKjLUJa7z8dum/9/AbINNLzJ7NiRFUdOgMnfAmJt8jFbW2zeC5qQ==}
+    peerDependencies:
+      svelte: ^3 || ^4 || ^5.0.0-next.42
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -1603,6 +1611,10 @@ snapshots:
       lightningcss-win32-x64-msvc: 1.30.2
 
   locate-character@3.0.0: {}
+
+  lucide-svelte@0.577.0(svelte@5.46.1):
+    dependencies:
+      svelte: 5.46.1
 
   lz-string@1.5.0: {}
 
