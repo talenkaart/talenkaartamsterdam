@@ -904,7 +904,7 @@
     © <b>Talenkaart Amsterdam</b>, Universiteit van Amsterdam, 2025.
   </h3>
   <br />
-  Data verzameld via enquetes op scholen en in stadsdelen in Amsterdam. Respondenten
+  Data verzameld via enquêtes op scholen en in stadsdelen in Amsterdam. Respondenten
   zijn anoniem; er worden geen persoonsgegevens opgeslagen.
   <br /><br />
   <a class="underline" href="https://github.com/talenkaart/talenkaartamsterdam"
