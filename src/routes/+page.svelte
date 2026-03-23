@@ -343,7 +343,15 @@
       center: [4.9041, 52.3676],
       zoom: 11,
       minZoom: 9,
+      attributionControl: false,
     });
+
+    map.addControl(
+      new maplibregl.AttributionControl({
+        compact: true,
+      }),
+      "top-right",
+    );
 
     async function setupMapLayers() {
       if (!map || isInitializing || map.getSource("stadsdelen")) return;
