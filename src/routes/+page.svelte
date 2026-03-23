@@ -592,13 +592,21 @@
       });
 
       if (clickedStadsdelen.length > 0) {
-        const id = clickedStadsdelen[0].id;
-        selectedStadsdeelId = id as number;
-        selectedLocatieId = null;
-      } else {
-        selectedLocatieId = null;
-        selectedStadsdeelId = null;
+        const newId = clickedStadsdelen[0].id as number;
+
+        if (selectedStadsdeelId === newId) {
+          selectedStadsdeelId = null;
+        } else {
+          selectedStadsdeelId = newId;
+          selectedLocatieId = null;
+        }
+
+        updateHighlightSource();
+        return;
       }
+
+      selectedLocatieId = null;
+      selectedStadsdeelId = null;
       updateHighlightSource();
     });
 
@@ -610,10 +618,6 @@
   });
 
   let showLangStatistics = $state(true);
-
-  $effect(() => {
-    console.log(filteredRes);
-  });
 </script>
 
 <ModeWatcher />
@@ -701,14 +705,32 @@
         {/if}
       </h2>
 
+      {#if selectedLocatieId || selectedStadsdeelId}
+        <div
+          class="underline text-xs relative -top-3 opacity-75 cursor-pointer"
+          onclick={() => {
+            selectedLocatieId = null;
+            selectedStadsdeelId = null;
+          }}
+        >
+          &#8592; {locale === "nl"
+            ? `Terug naar alle ondervraagden`
+            : `Back to all respondents`} ({respondents.length})
+        </div>
+      {/if}
+
       {#if filteredRes.length == 0}
         <p class="opacity-50">Geen data over dit gebied...</p>
       {:else}
         <div>
           {@html locale === "nl"
-            ? `Onder de <span class='underline'>${filteredRes.length}</span> ondervraagden
+            ? `Onder de <span class='underline'>${filteredRes.length}</span> ondervraagden 
+            ${selectedStadsdeelId ? `in het stadsdeel <span class="underline">${selectedStadsdeel.naam}</span>` : ``}
+            ${selectedLocatieId ? `op de locatie <span class="underline">${selectedLocatie.naam}</span>` : ``}
           worden de volgende talen`
-            : `Among the <span class='underline'>${filteredRes.length}</span> respondents,
+            : `Among the <span class='underline'>${filteredRes.length}</span> respondents 
+            ${selectedStadsdeelId ? `in the district <span class="underline">${selectedStadsdeel.naam}</span>` : ``}
+            ${selectedLocatieId ? `at the location <span class="underline">${selectedLocatie.naam}</span>` : ``},
           the following languages are spoken`}
           <ul>
             <li class="p-1">
@@ -792,8 +814,10 @@
           </div>
         {:else}
           <div class="bg-gray-500/10 p-2 text-sm text-gray-300 rounded-lg">
-            Selecteer één of meerdere talen om te zien hoeveel ondervraagden
-            deze combinatie spreken
+            {locale == "nl"
+              ? `Selecteer één of meerdere van de onderstaande talen om te zien hoeveel ondervraagden
+            deze combinatie spreken.`
+              : `Select one or more languages below to see how many of the respondents speak this combination of languages.`}
           </div>
         {/if}
         <ul>
