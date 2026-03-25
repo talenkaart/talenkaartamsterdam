@@ -651,7 +651,7 @@
 >
   <div class="flex items-center">
     <img src="talenkaart_logo.svg" class="size-8 inline mr-4 dark:opacity-75" />
-    <h1 class="inline font-[800] text-[12px] sm:text-[15px]">
+    <h1 class="inline font-[800] text-[13px] sm:text-[15px]">
       {(locale === "nl"
         ? "Talenkaart Amsterdam"
         : "Language Map Amsterdam"
