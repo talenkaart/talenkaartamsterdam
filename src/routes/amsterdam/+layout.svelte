@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-  <title>Talenkaart</title>
+  <title>Talenkaart Amsterdam</title>
   <link rel="icon" href={favicon} />
 </svelte:head>
 

@@ -1,8 +1,13 @@
 <!doctype html>
-<html lang="en">
+<html>
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<script>
+			if (window.location.pathname === '/' || window.location.pathname === '/index.html') {
+				window.location.replace('/amsterdam');
+			}
+		</script>
 		<link rel="stylesheet" href="https://use.typekit.net/bis1pqi.css" />
 		%sveltekit.head%
 	</head>
