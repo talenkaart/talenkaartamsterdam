@@ -894,7 +894,7 @@
               .sort((a, b) => b[1] - a[1])
               .slice(0, 3)}
 
-            <li class="p-2 even:bg-gray-500/10 rounded-lg">
+            <li class="p-2 even:bg-gray-400/10 rounded-lg">
               <div
                 class="flex items-center gap-1"
                 onclick={(e) => toggleLangStatistics(code, e)}
