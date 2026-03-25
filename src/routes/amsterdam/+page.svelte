@@ -969,7 +969,7 @@
             </li>
           {/each}
           {#if !showAllLanguages && sortedLangs.length > 10}
-            <li class="p-2 pl-8 font-[600] text-[#af71ff]">
+            <li class="p-2 pl-8 font-[600] text-[#af71ff] dark:opacity-75">
               <a
                 class="underline cursor-pointer"
                 onclick={() => (showAllLanguages = true)}
