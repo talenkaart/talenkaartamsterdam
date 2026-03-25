@@ -566,12 +566,9 @@
     });
 
     map!.on("click", (e) => {
-      const isMobile = window.innerWidth < 768;
-      const p = isMobile ? 20 : 5;
-
       const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
-        [e.point.x - p, e.point.y - p],
-        [e.point.x + p, e.point.y + p],
+        [e.point.x - 5, e.point.y - 5],
+        [e.point.x + 5, e.point.y + 5],
       ];
 
       const clickedLocaties = map!.queryRenderedFeatures(bbox, {
@@ -581,6 +578,7 @@
       if (clickedLocaties.length > 0) {
         const feature = clickedLocaties[0];
         const id = feature.properties?.id ?? feature.id;
+
         if (id !== undefined && id !== null) {
           selectedLocatieId = Number(id);
           selectedStadsdeelId = null;
@@ -595,18 +593,21 @@
 
       if (clickedStadsdelen.length > 0) {
         const newId = clickedStadsdelen[0].id as number;
+
         if (selectedStadsdeelId === newId) {
           selectedStadsdeelId = null;
         } else {
           selectedStadsdeelId = newId;
           selectedLocatieId = null;
         }
+
         updateHighlightSource();
-      } else {
-        selectedLocatieId = null;
-        selectedStadsdeelId = null;
-        updateHighlightSource();
+        return;
       }
+
+      selectedLocatieId = null;
+      selectedStadsdeelId = null;
+      updateHighlightSource();
     });
 
     return () => {
